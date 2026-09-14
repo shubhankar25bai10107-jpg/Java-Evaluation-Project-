@@ -1,215 +1,283 @@
+```java
 import java.util.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.concurrent.atomic.AtomicInteger;
 
-class BankingException extends Exception {
-    public BankingException(String message) {
+class BankException extends Exception {
+    public BankException(String message) {
         super(message);
     }
 }
 
-class Transaction {
-    private String transactionType;
+class TransactionRecord {
+    private String type;
     private double amount;
-    private LocalDateTime timestamp;
+    private LocalDateTime dateTime;
 
-    public Transaction(String type, double amount) {
-        this.transactionType = type;
+    public TransactionRecord(String type, double amount) {
+        this.type = type;
         this.amount = amount;
-        this.timestamp = LocalDateTime.now();
+        this.dateTime = LocalDateTime.now();
     }
 
     @Override
     public String toString() {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-        String formattedDate = timestamp.format(formatter);
-        return formattedDate + " | " + transactionType + " | $" + String.format("%.2f", amount);
+        DateTimeFormatter format =
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
+        return dateTime.format(format) + " | " + type + " | ₹"
+                + String.format("%.2f", amount);
     }
 }
 
-class Account {
+class BankAccount {
     private int accountId;
-    private String accountHolder;
-    private String securityPin;
-    private double currentBalance;
-    private List<Transaction> transactionHistory;
+    private String name;
+    private String pin;
+    private double balance;
+    private List<TransactionRecord> history;
 
-    public Account(int id, String name, String pin, double initialBalance) {
-        this.accountId = id;
-        this.accountHolder = name;
-        this.securityPin = pin;
-        this.currentBalance = initialBalance;
-        this.transactionHistory = new ArrayList<>();
+    public BankAccount(int accountId, String name, String pin, double balance) {
+        this.accountId = accountId;
+        this.name = name;
+        this.pin = pin;
+        this.balance = balance;
+        this.history = new ArrayList<>();
 
-        if (initialBalance > 0) {
-            transactionHistory.add(new Transaction("INITIAL DEPOSIT", initialBalance));
+        if (balance > 0) {
+            history.add(
+                    new TransactionRecord("Initial Deposit", balance)
+            );
         }
     }
 
-    public int getAccountId() {
-        return accountId;
+    public boolean checkPin(String enteredPin) {
+        return pin.equals(enteredPin);
     }
 
-    public boolean isPinValid(String inputPin) {
-        return this.securityPin.equals(inputPin);
+    public void deposit(double amount) {
+        balance += amount;
+        history.add(new TransactionRecord("Deposit", amount));
     }
 
-    public void addFunds(double amount) {
-        this.currentBalance + = amount;
-        transactionHistory.add(new Transaction("DEPOSIT", amount));
-    }
-
-    public void removeFunds(double amount) throws BankingException {
-        if (amount > this.currentBalance) {
-            throw new BankingException("Not enough funds in the account.");
+    public void withdraw(double amount) throws BankException {
+        if (amount > balance) {
+            throw new BankException("Not enough balance.");
         }
-        this.currentBalance - = amount;
-        transactionHistory.add(new Transaction("WITHDRAW", amount));
+
+        balance -= amount;
+        history.add(new TransactionRecord("Withdraw", amount));
     }
 
     public void showStatement() {
-        System.out.println("\n====================================== ");
-        System.out.println("   Account Statement: " + accountHolder);
-        System.out.println("====================================== ");
+        System.out.println("\nAccount Statement");
+        System.out.println("Name: " + name);
+        System.out.println("--------------------------------------");
 
-        if (transactionHistory.isEmpty()) {
-            System.out.println("No recent transactions.");
+        if (history.isEmpty()) {
+            System.out.println("No transactions yet.");
         } else {
-            for (Transaction t : transactionHistory) {
-                System.out.println(t.toString());
+            for (TransactionRecord record : history) {
+                System.out.println(record);
             }
         }
 
         System.out.println("--------------------------------------");
-        System.out.println("Current Balance: $" + String.format("%.2f", currentBalance));
-        System.out.println("====================================== \n");
+        System.out.println("Current Balance: ₹"
+                + String.format("%.2f", balance));
     }
 }
 
-class BankingService {
-    private Map<Integer, Account> accountDatabase = new HashMap<>();
-    private AtomicInteger nextAccountNumber = new AtomicInteger(1000);
+class BankSystem {
+    private Map<Integer, BankAccount> accounts;
+    private AtomicInteger nextAccountNumber;
 
-    public int createNewAccount(String name, String pin, double startingAmount) {
-        int newId = nextAccountNumber.incrementAndGet();
-        Account newAccount = new Account(newId, name, pin, startingAmount);
-        accountDatabase.put(newId, newAccount);
-        return newId;
+    public BankSystem() {
+        accounts = new HashMap<>();
+        nextAccountNumber = new AtomicInteger(1000);
     }
 
-    public Account login(int id, String pin) throws BankingException {
-        Account acc = accountDatabase.get(id);
+    public int createAccount(String name, String pin, double amount) {
+        int id = nextAccountNumber.incrementAndGet();
 
-        if (acc == null) {
-            throw new BankingException("Account not found.");
-        }
-        if (!acc.isPinValid(pin)) {
-            throw new BankingException("Incorrect PIN.");
-        }
-        return acc;
+        BankAccount account =
+                new BankAccount(id, name, pin, amount);
+
+        accounts.put(id, account);
+
+        return id;
     }
 
-    public void processTransfer(int senderId, String senderPin, int receiverId, double transferAmount) throws BankingException {
-        if (transferAmount <= 0) {
-            throw new BankingException("Transfer amount must be greater than zero.");
+    public BankAccount login(int id, String pin)
+            throws BankException {
+
+        BankAccount account = accounts.get(id);
+
+        if (account == null) {
+            throw new BankException("Account not found.");
         }
 
-        Account sender = login(senderId, senderPin);
-        Account receiver = accountDatabase.get(receiverId);
+        if (!account.checkPin(pin)) {
+            throw new BankException("Wrong PIN.");
+        }
+
+        return account;
+    }
+
+    public void transfer(int fromId, String pin,
+                         int toId, double amount)
+            throws BankException {
+
+        if (amount <= 0) {
+            throw new BankException(
+                    "Amount must be greater than zero."
+            );
+        }
+
+        BankAccount sender = login(fromId, pin);
+        BankAccount receiver = accounts.get(toId);
 
         if (receiver == null) {
-            throw new BankingException("Recipient account does not exist.");
+            throw new BankException(
+                    "Receiver account not found."
+            );
         }
 
-        sender.removeFunds(transferAmount);
-        receiver.addFunds(transferAmount);
+        sender.withdraw(amount);
+        receiver.deposit(amount);
     }
 
-    public void generateStatement(int id, String pin) throws BankingException {
-        Account acc = login(id, pin);
-        acc.showStatement();
+    public void viewStatement(int id, String pin)
+            throws BankException {
+
+        BankAccount account = login(id, pin);
+        account.showStatement();
     }
 }
 
 public class Main {
+
     public static void main(String[] args) {
-        BankingService bank = new BankingService();
-        Scanner scanner = new Scanner(System.in);
 
-        System.out.println("**************************************");
-        System.out.println("*      Welcome to Java CLI Bank      *");
-        System.out.println("**************************************");
+        Scanner sc = new Scanner(System.in);
+        BankSystem bank = new BankSystem();
 
-        boolean isRunning = true;
+        System.out.println("Welcome to Java CLI Bank");
 
-        while (isRunning) {
-            System.out.println("\nMAIN MENU:");
-            System.out.println("1. Open a New Account");
-            System.out.println("2. Transfer Funds");
-            System.out.println("3. View Account Statement");
-            System.out.println("4. Exit Application");
-            System.out.print(">> Select an option (1-4): ");
+        boolean running = true;
 
-            String choice = scanner.nextLine();
+        while (running) {
+
+            System.out.println("\nMain Menu");
+            System.out.println("1. Create Account");
+            System.out.println("2. Transfer Money");
+            System.out.println("3. View Statement");
+            System.out.println("4. Exit");
+
+            System.out.print("Enter your choice: ");
+            String choice = sc.nextLine();
 
             try {
+
                 switch (choice) {
+
                     case "1":
-                        System.out.print("Enter full name: ");
-                        String name = scanner.nextLine();
+                        System.out.print("Enter your name: ");
+                        String name = sc.nextLine();
 
-                        System.out.print("Create a 4 digit PIN: ");
-                        String pin = scanner.nextLine();
+                        System.out.print("Enter a 4-digit PIN: ");
+                        String pin = sc.nextLine();
 
-                        System.out.print("Enter initial deposit : $");
-                        double deposit = Double.parseDouble(scanner.nextLine());
+                        System.out.print("Enter initial deposit: ₹");
+                        double deposit =
+                                Double.parseDouble(sc.nextLine());
 
-                        int accId = bank.createNewAccount(name, pin, deposit);
-                        System.out.println(" Your new Account ID is: " + accId);
+                        int id =
+                                bank.createAccount(
+                                        name,
+                                        pin,
+                                        deposit
+                                );
+
+                        System.out.println(
+                                "Account created successfully!"
+                        );
+                        System.out.println(
+                                "Your Account ID is: " + id
+                        );
                         break;
 
                     case "2":
                         System.out.print("Enter your Account ID: ");
-                        int fromId = Integer.parseInt(scanner.nextLine());
+                        int senderId =
+                                Integer.parseInt(sc.nextLine());
 
                         System.out.print("Enter your PIN: ");
-                        String myPin = scanner.nextLine();
+                        String senderPin = sc.nextLine();
 
-                        System.out.print("Enter recipient's Account ID: ");
-                        int toId = Integer.parseInt(scanner.nextLine());
+                        System.out.print("Enter receiver Account ID: ");
+                        int receiverId =
+                                Integer.parseInt(sc.nextLine());
 
-                        System.out.print("Enter amount to transfer: $");
-                        double amount = Double.parseDouble(scanner.nextLine());
+                        System.out.print("Enter amount: ₹");
+                        double amount =
+                                Double.parseDouble(sc.nextLine());
 
-                        bank.processTransfer(fromId, myPin, toId, amount);
-                        System.out.println("\nSUCCESS: Transfer completed.");
+                        bank.transfer(
+                                senderId,
+                                senderPin,
+                                receiverId,
+                                amount
+                        );
+
+                        System.out.println(
+                                "Money transferred successfully!"
+                        );
                         break;
 
                     case "3":
-                        System.out.print("Enter your Account ID: ");
-                        int queryId = Integer.parseInt(scanner.nextLine());
+                        System.out.print("Enter Account ID: ");
+                        int statementId =
+                                Integer.parseInt(sc.nextLine());
 
-                        System.out.print("Enter your PIN: ");
-                        String queryPin = scanner.nextLine();
+                        System.out.print("Enter PIN: ");
+                        String statementPin = sc.nextLine();
 
-                        bank.generateStatement(queryId, queryPin);
+                        bank.viewStatement(
+                                statementId,
+                                statementPin
+                        );
                         break;
 
                     case "4":
-                        System.out.println("\nThank you for using Java CLI Bank. Goodbye!");
-                        isRunning = false;
+                        System.out.println(
+                                "Thank you for using Java CLI Bank!"
+                        );
+                        running = false;
                         break;
 
                     default:
-                        System.out.println("\nINVALID OPTION: Please type 1, 2, 3, or 4 and press Enter.");
+                        System.out.println(
+                                "Invalid choice. Try again."
+                        );
                 }
-            } catch (BankingException e) {
-                System.out.println("\nTRANSACTION FAILED: " + e.getMessage());
+
+            } catch (BankException e) {
+
+                System.out.println(
+                        "Error: " + e.getMessage()
+                );
+
             } catch (NumberFormatException e) {
-                System.out.println("\nINPUT ERROR: Please enter valid numbers only.");
+
+                System.out.println(
+                        "Please enter a valid number."
+                );
             }
         }
-        scanner.close();
+
+        sc.close();
     }
 }
+```
